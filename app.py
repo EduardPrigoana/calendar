@@ -1,5 +1,5 @@
 import os
-from flask import Flask, send_file
+from flask import Flask, send_file, render_template_string
 from icalendar import Calendar, Event
 from datetime import datetime, timezone
 
@@ -54,6 +54,22 @@ def trim_ics(input_file: str, output_file: str):
 
     except Exception as e:
         print(f"Error: {e}")
+
+@app.route("/")
+def index():
+    html_content = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Calendar Trimmer</title>
+    </head>
+    <body>
+        <h1>It works!</h1>
+        <p><a href="/calendar-trimmed.ics">Download Trimmed Calendar</a></p>
+    </body>
+    </html>
+    """
+    return render_template_string(html_content)
 
 @app.route("/calendar-trimmed.ics")
 def serve_trimmed_calendar():
