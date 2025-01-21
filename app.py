@@ -1,96 +1,71 @@
+from flask import Flask, send_file
 import os
-from flask import Flask, send_file, render_template_string
-from icalendar import Calendar, Event
-from datetime import datetime, timezone
 
 app = Flask(__name__)
 
-def trim_ics(input_file: str, output_file: str):
-    """
-    Trims events from the ICS file that occur before the current date and time.
+# Path to the provided calendar.ics file (default example)
+ICS_FILE_PATH = 'calendar.ics'  # Path to your .ics file
+TRIMMED_ICS_PATH = 'trimmed.ics'  # Path to save the trimmed .ics file
 
-    Parameters:
-        input_file (str): Path to the input ICS file.
-        output_file (str): Path to save the trimmed ICS file.
-    """
-    try:
-        # Read the ICS file
-        with open(input_file, 'r', encoding='utf-8') as file:
-            calendar = Calendar.from_ical(file.read())
+# Function to trim the .ics file
+def trim_calendar_file():
+    trimmed_content = []
 
-        # Get the current date and time in UTC
-        now = datetime.now(timezone.utc)
+    # Read the provided .ics file as a standard text file
+    with open(ICS_FILE_PATH, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
 
-        # Create a new calendar object for filtered events
-        trimmed_calendar = Calendar()
+    # Keep the header lines up to X-WR-TIMEZONE
+    for i, line in enumerate(lines):
+        trimmed_content.append(line)
+        if line.startswith("X-WR-TIMEZONE:Europe/Bucharest"):
+            break
 
-        # Copy over all properties except events
-        for key, value in calendar.items():
-            trimmed_calendar.add(key, value)
+    # Find the first instance of "DTSTART:2025" and append subsequent lines
+    include = False
+    for line in lines:
+        if not include and "DTSTART:2025" in line:
+            include = True
+        if include:
+            trimmed_content.append(line)
 
-        # Copy over events that are in the future
-        for component in calendar.walk():
-            if component.name == "VEVENT":
-                start = component.get("DTSTART")
+    # Save the trimmed content to a new .ics file
+    with open(TRIMMED_ICS_PATH, 'w', encoding='utf-8') as trimmed_f:
+        trimmed_f.writelines(trimmed_content)
 
-                # Handle both date and datetime
-                if hasattr(start.dt, 'date'):
-                    event_start = start.dt
-                else:
-                    event_start = datetime.combine(start.dt, datetime.min.time())
+@app.route('/run')
+def run_trim_command():
+    # Delete the existing trimmed.ics file if it exists
+    if os.path.exists(TRIMMED_ICS_PATH):
+        os.remove(TRIMMED_ICS_PATH)
 
-                # Ensure timezone-awareness when comparing
-                if event_start.tzinfo is None:
-                    event_start = event_start.replace(tzinfo=timezone.utc)
+    # Regenerate the trimmed file
+    trim_calendar_file()
+    return "Trimmed .ics file has been regenerated successfully!"
 
-                if event_start >= now:
-                    trimmed_calendar.add_component(component)
+@app.route('/trimmed.ics')
+def download_trimmed_ics():
+    if not os.path.exists(TRIMMED_ICS_PATH):
+        return "The trimmed .ics file does not exist. Please run /run first.", 404
+    return send_file(TRIMMED_ICS_PATH, as_attachment=True, mimetype='text/calendar')
 
-        # Write the trimmed calendar to the output file
-        with open(output_file, 'wb') as file:
-            file.write(trimmed_calendar.to_ical())
-
-        print(f"Trimmed calendar saved to: {output_file}")
-
-    except Exception as e:
-        print(f"Error: {e}")
-
-@app.route("/")
+@app.route('/')
 def index():
-    html_content = """
+    html_content = '''
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Calendar Trimmer</title>
+        <title>It works!</title>
     </head>
     <body>
         <h1>It works!</h1>
-        <p><a href="/calendar-trimmed.ics">Download Trimmed Calendar</a></p>
+        <p>The trimmed calendar file can be generated and downloaded:</p>
+        <a href="/run">Generate Trimmed ICS File</a><br>
+        <a href="/trimmed.ics">Download Trimmed ICS File</a>
     </body>
     </html>
-    """
-    return render_template_string(html_content)
+    '''
+    return html_content
 
-@app.route("/calendar-trimmed.ics")
-def serve_trimmed_calendar():
-    input_file = os.path.abspath("calendar.ics")
-    output_file = os.path.abspath("calendar-trimmed.ics")
-
-    if not os.path.exists(input_file):
-        return f"Error: Input file '{input_file}' not found.", 404
-
-    try:
-        trim_ics(input_file, output_file)
-
-        if not os.path.exists(output_file):
-            return "Error: Failed to create trimmed calendar file.", 500
-
-        return send_file(output_file, as_attachment=True, mimetype="text/calendar")
-
-    except FileNotFoundError as fnfe:
-        return f"Error: {fnfe}", 404
-    except Exception as e:
-        return f"Error: {e}", 500
-
-if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5000)
+if __name__ == '__main__':
+app.run(host='0.0.0.0', port=10000)
